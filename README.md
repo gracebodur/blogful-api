@@ -1,8 +1,4 @@
-# Express Boilerplate!
-
-This is a boilerplate project used for starting new projects!
-
-## Set up
+# Databases with Express(Blogful-API)
 
 Complete the following steps to start a new project (NEW-PROJECT-NAME):
 
@@ -20,6 +16,14 @@ Start the application `npm start`
 Start nodemon for the application `npm run dev`
 
 Run the tests `npm test`
+
+##
+
+## Seeding
+Seed the database with the script using the following command:
+
+psql -U dunder_mifflin -d blogful -f ./seeds/seed.blogful_articles.sql
+
 
 ## Deploying
 
