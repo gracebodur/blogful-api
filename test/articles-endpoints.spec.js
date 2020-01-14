@@ -3,7 +3,7 @@ const knex = require('knex')
 const app = require('../src/app')
 const { makeArticlesArray } = require('./articles.fixtures')
 
-describe.only('Articles Endpoints', function() {
+describe('Articles Endpoints', function() {
     let db 
 
     before('make knex instance', () => {
@@ -62,16 +62,22 @@ describe.only('Articles Endpoints', function() {
                   .insert(testArticles)
               })
             it('responds with 200 and the specified article', () => {
+                this.retries(3)
                 const articleId = 2
                 const expectedArticle = testArticles[articleId - 1]
                 return supertest(app)
                 .get(`/articles/${articleId}`)
                 .expect(200, expectedArticle)
+                .expect(res => {
+                    const expected = new Date().toLocaleString('en', { timeZone: 'UTC'})
+                    const actual = new Date(res.body.date_published).toLocaleString()
+                    expect(actual).to.eql(expected)
+                    })
                 })
             })
         })
 
-    describe.only(`POST /articles`, () => {
+    describe(`POST /articles`, () => {
            it(`creates an article, responding with 201 and the new article`,  function() {
             this.retries(3)
             const newArticle = {
