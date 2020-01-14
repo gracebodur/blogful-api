@@ -1,4 +1,5 @@
 const express = require('express')
+const xss = require('xss')
 const ArticlesService = require('./articles-service')
 
 const articlesRouter = express.Router()
@@ -59,9 +60,9 @@ articlesRouter
             }
             res.json({
                 id: article.id,
-                title: article.title,
+                title: xss(article.title), //sanitize title
                 style: article.style,
-                content: article.content,
+                content: xss(article.content), //sanitize content
                 date_published: new Date(article.date_published)
             })
         })
