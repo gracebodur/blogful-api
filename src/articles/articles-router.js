@@ -5,6 +5,14 @@ const ArticlesService = require('./articles-service')
 const articlesRouter = express.Router()
 const jsonParser = express.json()
 
+const serializeArticle = article => ({
+  id: article.id,
+  title: xss(article.title),
+  style: article.style,
+  content: xss(article.content),
+  date_published: article.date_published,
+})
+
 articlesRouter
     .route('/')
     .get((req, res, next) => {
@@ -68,7 +76,6 @@ articlesRouter
     .get((req, res, next) => {
         res.json(serializeArticle(res.article))
     })
-
     .delete((req, res, next) => {
         ArticlesService.deleteArticle(
             req.app.get('db'),

@@ -1,5 +1,6 @@
 const { expect } = require('chai')
 const knex = require('knex')
+const xss = require('xss')
 const app = require('../src/app')
 const { makeArticlesArray } = require('./articles.fixtures')
 
@@ -154,7 +155,7 @@ describe('Articles Endpoints', function() {
               })
             })
 
-        describe.only(`DELETE /articles/:article_id`, () => {
+        describe(`DELETE /articles/:article_id`, () => {
             context(`Given no articles`, () => {
                  it(`responds with 404`, () => {
                    const articleId = 123456
