@@ -3,6 +3,7 @@ const knex = require('knex')
 const xss = require('xss')
 const app = require('../src/app')
 const { makeArticlesArray } = require('./articles.fixtures')
+const { makeUsersArray } = require('./users.fixtures')
 
 describe('Articles Endpoints', function() {
     let db 
@@ -17,9 +18,9 @@ describe('Articles Endpoints', function() {
 
     after('disconnect from db', () => db.destroy())
 
-    before('clean the table', () => db('blogful_articles').truncate())
+    before('clean the table', () => db.raw('TRUNCATE blogful_articles, blogful_users, blogful_comments RESTART IDENTITY CASCADE'))
 
-    afterEach('cleanup', () => db('blogful_articles').truncate())
+    afterEach('cleanup',() => db.raw('TRUNCATE blogful_articles, blogful_users, blogful_comments RESTART IDENTITY CASCADE'))
 
     describe(`GET /api/articles`, () => {
         context(`Given no articles`, () => {
@@ -31,12 +32,18 @@ describe('Articles Endpoints', function() {
         })
 
         context('Given there are articles in the database', () => {
-            const testArticles = makeArticlesArray() 
+            const testArticles = makeArticlesArray()
+            const testUsers = makeUsersArray() 
             
             beforeEach('insert articles', () => {
               return db
+                .into('blogful_users')
+                .insert(testUsers)
+                .then(() => {
+                  return db
                 .into('blogful_articles')
                 .insert(testArticles)
+                })
             })
 
             it('responds with 200 and all of the articles', () => {
@@ -44,6 +51,32 @@ describe('Articles Endpoints', function() {
                 .get('/api/articles')
                 .expect(200, testArticles)
             })
+        })
+
+        context(`Given an XSS attack article`, () => {
+          const testUsers = makeUsersArray();
+          const { maliciousArticle, expectedArticle } = makeMaliciousArticle()
+    
+          beforeEach('insert malicious article', () => {
+            return db
+              .into('blogful_users')
+              .insert(testUsers)
+              .then(() => {
+                return db
+                  .into('blogful_articles')
+                  .insert([ maliciousArticle ])
+              })
+          })
+    
+          it('removes XSS attack content', () => {
+            return supertest(app)
+              .get(`/api/articles`)
+              .expect(200)
+              .expect(res => {
+                expect(res.body[0].title).to.eql(expectedArticle.title)
+                expect(res.body[0].content).to.eql(expectedArticle.content)
+              })
+          })
         })
      }) 
 
@@ -59,11 +92,17 @@ describe('Articles Endpoints', function() {
 
         context('Given there are articles in the database', () => {
             const testArticles = makeArticlesArray()
+            const testUsers = makeUsersArray()
 
             beforeEach('insert articles', () => {
                 return db
-                  .into('blogful_articles')
-                  .insert(testArticles)
+                  .into('blogful_users')
+                  .insert(testUsers)
+                  .then(() => {
+                    return db
+                      .into('blogful_articles')
+                      .insert(testArticles)
+                  })
             })
 
             it('responds with 200 and the specified article', () => {
@@ -90,8 +129,13 @@ describe('Articles Endpoints', function() {
         
              beforeEach('insert malicious article', () => {
                return db
-                 .into('blogful_articles')
-                 .insert([ maliciousArticle ])
+               .into('blogful_users')
+               .insert(testUsers)
+               .then(() => {
+                 return db
+                   .into('blogful_articles')
+                   .insert([ maliciousArticle ])
+               })
              })
         
              it('removes XSS attack content', () => {
@@ -108,7 +152,14 @@ describe('Articles Endpoints', function() {
     })
 
     describe(`POST /api/articles`, () => {
-           it(`creates an article, responding with 201 and the new article`,  function() {
+      const testUsers = makeUsersArray()
+      beforeEach('insert malicious article', () => {
+        return db
+          .into('blogful_users')
+          .insert(testUsers)
+      })
+        
+      it(`creates an article, responding with 201 and the new article`,  function() {
             this.retries(3)
             const newArticle = {
                 title: 'Test new article',
@@ -126,14 +177,15 @@ describe('Articles Endpoints', function() {
                     expect(res.body).to.have.property('id')
                     expect(res.body).to.have.property('date_published')
                     expect(res.headers.location).to.eql(`/api/articles/${res.body.id}`)
-                    // const expected = new Date().toLocaleString('en', { timeZone: 'UTC'})
-                    // const actual = new Date(res.body.date_published).toLocaleString()
-                    // expect(actual).to.eql(expected)
+                    expect(res.headers.location).to.eql(`/api/articles/${res.body.id}`)
+                    const expected = new Intl.DateTimeFormat('en-US').format(new Date())
+                    const actual = new Intl.DateTimeFormat('en-US').format(new Date(res.body.date_published))
+                    expect(actual).to.eql(expected)
                })
-               .then(postRes =>
+               .then(res =>
                 supertest(app)
-                    .get(`/api/articles/${postRes.body.id}`)
-                    .expect(postRes.body)
+                    .get(`/api/articles/${res.body.id}`)
+                    .expect(res.body)
                 )
            })
 
@@ -147,6 +199,7 @@ describe('Articles Endpoints', function() {
               }
                 it(`responds with 400 and an error message when the '${field}' is missing`, () => {
                 delete newArticle[field]
+
                 return supertest(app)
                   .post('/api/articles')
                   .send(newArticle)
@@ -155,6 +208,19 @@ describe('Articles Endpoints', function() {
                   })
               })
             })
+
+            it('removes XSS attack content from response', () => {
+              const { maliciousArticle, expectedArticle } = makeMaliciousArticle()
+              return supertest(app)
+                .post(`/api/articles`)
+                .send(maliciousArticle)
+                .expect(201)
+                .expect(res => {
+                  expect(res.body.title).to.eql(expectedArticle.title)
+                  expect(res.body.content).to.eql(expectedArticle.content)
+                })
+            })
+          })
 
         describe(`DELETE /api/articles/:article_id`, () => {
             context(`Given no articles`, () => {
@@ -168,11 +234,17 @@ describe('Articles Endpoints', function() {
 
            context('Given there are articles in the database', () => {
              const testArticles = makeArticlesArray()
+             const testUsers = makeUsersArray()
         
              beforeEach('insert articles', () => {
-               return db
-                .into('blogful_articles')
-                .insert(testArticles)
+              return db
+              .into('blogful_users')
+              .insert(testUsers)
+              .then(() => {
+                return db
+                  .into('blogful_articles')
+                  .insert(testArticles)
+              })
              })
         
              it('responds with 204 and removes the article', () => {
@@ -202,11 +274,17 @@ describe('Articles Endpoints', function() {
 
          context('Given there are articles in the database', () => {
            const testArticles = makeArticlesArray()
+           const testUsers = makeUsersArray()
       
            beforeEach('insert articles', () => {
-             return db
-               .into('blogful_articles')
-               .insert(testArticles)
+            return db
+            .into('blogful_users')
+            .insert(testUsers)
+            .then(() => {
+              return db
+                .into('blogful_articles')
+                .insert(testArticles)
+            })
            })
       
           it('responds with 204 and updates the article', () => {
@@ -269,4 +347,3 @@ describe('Articles Endpoints', function() {
             })
         })
     })
-})
